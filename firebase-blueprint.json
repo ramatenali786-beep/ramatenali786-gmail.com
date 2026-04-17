@@ -1,0 +1,109 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Stores public user information.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Unique user ID" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "preferredLanguage": { "type": "string", "description": "ISO language code" },
+        "isPremium": { "type": "boolean", "description": "Whether the user has a $10/mo subscription" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "photoURL", "createdAt"]
+    },
+    "PrivateUser": {
+      "title": "Private User Data",
+      "description": "Stores sensitive user information like email.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "updatedAt"]
+    },
+    "Translation": {
+      "title": "Translation History",
+      "description": "A record of a single translation event.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Owner of the translation" },
+        "sourceText": { "type": "string" },
+        "translatedText": { "type": "string" },
+        "sourceLang": { "type": "string" },
+        "targetLang": { "type": "string" },
+        "type": { "type": "string", "enum": ["text", "voice", "ocr"] },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "sourceText", "translatedText", "timestamp"]
+    },
+    "ChatMessage": {
+      "title": "Chat Message",
+      "description": "A message sent in a P2P chat.",
+      "type": "object",
+      "properties": {
+        "senderId": { "type": "string" },
+        "receiverId": { "type": "string" },
+        "originalText": { "type": "string" },
+        "translatedText": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "chatId": { "type": "string", "description": "Unique ID for the conversation" }
+      },
+      "required": ["senderId", "receiverId", "originalText", "timestamp", "chatId"]
+    },
+    "Feedback": {
+      "title": "User Feedback",
+      "description": "Feedback submitted by users.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "User ID if logged in" },
+        "email": { "type": "string" },
+        "content": { "type": "string" },
+        "rating": { "type": "number", "description": "1-5 rating" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["content", "timestamp"]
+    },
+    "CallSession": {
+      "title": "Call Session",
+      "description": "A record of a voice or video call.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The user who participated in the call" },
+        "recipientName": { "type": "string" },
+        "type": { "type": "string", "enum": ["voice", "video"] },
+        "duration": { "type": "number", "description": "Duration in seconds" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "recipientName", "type", "duration", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Public user profile data"
+    },
+    "/private_users/{userId}": {
+      "schema": "PrivateUser",
+      "description": "Private user data (email, etc.)"
+    },
+    "/history/{translationId}": {
+      "schema": "Translation",
+      "description": "Translation history records"
+    },
+    "/chats/{chatId}/messages/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Messages within a specific chat"
+    },
+    "/feedback/{feedbackId}": {
+      "schema": "Feedback",
+      "description": "User feedback submissions"
+    },
+    "/calls/{callId}": {
+      "schema": "CallSession",
+      "description": "Call history records"
+    }
+  }
+}
