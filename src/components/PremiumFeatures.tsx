@@ -33,7 +33,8 @@ import {
   serverTimestamp,
   limit
 } from 'firebase/firestore';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Modality } from "@google/genai";
+import { LANGUAGES } from '../constants/languages';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -47,8 +48,8 @@ interface ChatMessage {
 }
 
 export function RealTimeChat({ 
-  targetLang, 
-  targetLangName, 
+  targetLang: initialTargetLang, 
+  targetLangName: initialTargetLangName, 
   sourceLang,
   sourceLangName,
   recipientId, 
@@ -63,6 +64,8 @@ export function RealTimeChat({
   recipientName?: string,
   isSmartReplyEnabled?: boolean
 }) {
+  const [targetLang, setTargetLang] = useState(initialTargetLang);
+  const [targetLangName, setTargetLangName] = useState(initialTargetLangName);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -71,6 +74,12 @@ export function RealTimeChat({
   const scrollRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const user = auth.currentUser;
+
+  // Update internal target lang if prop changes
+  useEffect(() => {
+    setTargetLang(initialTargetLang);
+    setTargetLangName(initialTargetLangName);
+  }, [initialTargetLang, initialTargetLangName]);
 
   const chatId = recipientId 
     ? [user?.uid, recipientId].sort().join('_') 
@@ -180,7 +189,52 @@ export function RealTimeChat({
     await processAndSendMessage(text);
   };
 
-  const playMessageAudio = (text: string) => {
+  const playMessageAudio = async (text: string) => {
+    if (!text) return;
+
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [{ parts: [{ text: `Recite the following ${targetLangName} text clearly: ${text}` }] }],
+        config: {
+          responseModalities: ["AUDIO"],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: 'Kore' },
+            },
+          },
+        },
+      });
+
+      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (base64Audio) {
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const binaryString = window.atob(base64Audio);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        
+        const pcmData = new Int16Array(bytes.buffer);
+        const floatData = new Float32Array(pcmData.length);
+        for (let i = 0; i < pcmData.length; i++) {
+          floatData[i] = pcmData[i] / 32768;
+        }
+        
+        const buffer = audioCtx.createBuffer(1, floatData.length, 24000);
+        buffer.copyToChannel(floatData, 0);
+        
+        const source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioCtx.destination);
+        source.start();
+        return;
+      }
+    } catch (error) {
+      console.error("Gemini TTS Error:", error);
+    }
+
+    // Fallback to browser
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = targetLang;
@@ -197,7 +251,26 @@ export function RealTimeChat({
           </div>
           <div>
             <h4 className="font-serif font-bold">{recipientName ? `Chat with ${recipientName}` : 'Global Chat'}</h4>
-            <p className="text-[10px] font-bold text-gold uppercase tracking-wider">Translating to {targetLangName}</p>
+            <div className="flex items-center gap-1.5 cursor-pointer group" onClick={() => {}}>
+              <p className="text-[10px] font-bold text-gold uppercase tracking-wider">Translating to {targetLangName}</p>
+              <Globe className="w-3 h-3 text-gold/50 group-hover:text-gold transition-colors" />
+              
+              <select 
+                value={targetLang}
+                onChange={(e) => {
+                  const lang = LANGUAGES.find(l => l.code === e.target.value);
+                  if (lang) {
+                    setTargetLang(lang.code);
+                    setTargetLangName(lang.name);
+                  }
+                }}
+                className="absolute opacity-0 cursor-pointer w-24"
+              >
+                {LANGUAGES.map(l => (
+                  <option key={l.code} value={l.code}>{l.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
       </div>
@@ -299,8 +372,8 @@ export function RealTimeChat({
 
 export function CallInterface({ 
   type, 
-  targetLang, 
-  targetLangName, 
+  targetLang: initialTargetLang, 
+  targetLangName: initialTargetLangName, 
   sourceLang, 
   sourceLangName, 
   recipientName, 
@@ -318,6 +391,8 @@ export function CallInterface({
   onClose: () => void,
   isVoiceCloningEnabled?: boolean
 }) {
+  const [currentTargetLang, setCurrentTargetLang] = useState(initialTargetLang);
+  const [currentTargetLangName, setCurrentTargetLangName] = useState(initialTargetLangName);
   const [mode, setMode] = useState<'voice' | 'subtitles'>('subtitles');
   const [isCalling, setIsCalling] = useState(true);
   const [remoteSubtitles, setRemoteSubtitles] = useState<string[]>([]);
@@ -362,7 +437,7 @@ export function CallInterface({
       try {
         const response = await ai.models.generateContent({
           model: "gemini-3-flash-preview",
-          contents: `Translate the following text to ${targetLangName}. Only return the translation.\n\nText: ${text}`,
+          contents: `Translate the following text to ${currentTargetLangName}. Only return the translation.\n\nText: ${text}`,
         });
         const translated = response.text || text;
         setMySubtitles(prev => [...prev.slice(-1), translated]);
@@ -417,7 +492,7 @@ export function CallInterface({
       if (recognitionRef.current) recognitionRef.current.stop();
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     };
-  }, [isCalling, isMuted, sourceLang, targetLangName]);
+  }, [isCalling, isMuted, sourceLang, currentTargetLangName]);
   
   // Call Timer
   useEffect(() => {
@@ -540,22 +615,54 @@ export function CallInterface({
         setInterimRemoteSubtitle("");
         
         if (mode === 'voice') {
-          window.speechSynthesis.cancel();
-          const utterance = new SpeechSynthesisUtterance(translated);
-          utterance.lang = sourceLang;
-          
-          if (isVoiceCloningEnabled) {
-            utterance.pitch = 1.1;
-            utterance.rate = 1.0;
-          } else {
+          try {
+            const ttsResponse = await ai.models.generateContent({
+              model: "gemini-3-flash-preview",
+              contents: [{ parts: [{ text: `Recite naturally: ${translated}` }] }],
+              config: {
+                responseModalities: ["AUDIO"],
+                speechConfig: {
+                  voiceConfig: {
+                    prebuiltVoiceConfig: { voiceName: isVoiceCloningEnabled ? 'Fenrir' : 'Kore' },
+                  },
+                },
+              },
+            });
+
+            const base64Audio = ttsResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+            if (base64Audio) {
+              const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+              const binaryString = window.atob(base64Audio);
+              const bytes = new Uint8Array(binaryString.length);
+              for (let index = 0; index < binaryString.length; index++) {
+                bytes[index] = binaryString.charCodeAt(index);
+              }
+              const pcmData = new Int16Array(bytes.buffer);
+              const floatData = new Float32Array(pcmData.length);
+              for (let index = 0; index < pcmData.length; index++) {
+                floatData[index] = pcmData[index] / 32768;
+              }
+              const buffer = audioCtx.createBuffer(1, floatData.length, 24000);
+              buffer.copyToChannel(floatData, 0);
+              const source = audioCtx.createBufferSource();
+              source.buffer = buffer;
+              source.onended = () => setIsSpeaking(false);
+              setIsSpeaking(true);
+              source.connect(audioCtx.destination);
+              source.start();
+            } else {
+              throw new Error("No audio data");
+            }
+          } catch (ttsErr) {
+            console.error("Call TTS Error, falling back:", ttsErr);
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(translated);
+            utterance.lang = sourceLang;
             utterance.rate = 0.9;
+            utterance.onstart = () => setIsSpeaking(true);
+            utterance.onend = () => setIsSpeaking(false);
+            window.speechSynthesis.speak(utterance);
           }
-          
-          utterance.onstart = () => setIsSpeaking(true);
-          utterance.onend = () => setIsSpeaking(false);
-          utterance.onerror = () => setIsSpeaking(false);
-          
-          window.speechSynthesis.speak(utterance);
         }
       } catch (e) {
         console.error("Call translation error:", e);
@@ -602,7 +709,7 @@ export function CallInterface({
           <div className="w-px h-3 bg-white/20 mx-1" />
           <div className="flex items-center gap-1.5 px-2 py-0.5 bg-gold/10 rounded-full border border-gold/20">
             <Globe className="w-2.5 h-2.5 text-gold animate-spin-slow" />
-            <span className="text-[8px] font-bold text-gold uppercase tracking-tighter">Secure Translation Active</span>
+            <span className="text-[8px] font-bold text-gold uppercase tracking-tighter">Translation Active</span>
           </div>
           <div className="w-px h-3 bg-white/20 mx-1" />
           <div className="flex items-end gap-0.5 h-3 ml-1">
@@ -686,9 +793,24 @@ export function CallInterface({
         </div>
         <p className="text-white/70 text-sm font-medium">{formatDuration(callDuration)}</p>
         
-        <div className="mt-4 bg-black/20 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/10 flex items-center gap-2">
+        <div className="mt-4 bg-black/20 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/10 flex items-center gap-2 relative group cursor-pointer">
           <Globe className="w-3 h-3 text-gold" />
-          <span className="text-[10px] font-bold text-gold uppercase tracking-wider">Translating to {sourceLangName}</span>
+          <span className="text-[10px] font-bold text-gold uppercase tracking-wider">Translating to {currentTargetLangName}</span>
+          <select 
+            value={currentTargetLang}
+            onChange={(e) => {
+              const lang = LANGUAGES.find(l => l.code === e.target.value);
+              if (lang) {
+                setCurrentTargetLang(lang.code);
+                setCurrentTargetLangName(lang.name);
+              }
+            }}
+            className="absolute inset-0 opacity-0 cursor-pointer"
+          >
+            {LANGUAGES.map(l => (
+              <option key={l.code} value={l.code}>{l.name}</option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -755,7 +877,7 @@ export function CallInterface({
                     exit={{ opacity: 0, y: -20 }}
                     className="bg-gold/20 backdrop-blur-xl px-6 py-3 rounded-2xl border border-gold/30 text-gold font-medium text-center max-w-[90%] shadow-2xl"
                   >
-                    <p className="text-[10px] font-bold text-white uppercase tracking-widest mb-1">You (Sent as {targetLangName})</p>
+                    <p className="text-[10px] font-bold text-white uppercase tracking-widest mb-1">You (Sent as {currentTargetLangName})</p>
                     {sub}
                   </motion.div>
                 ))}
@@ -879,7 +1001,7 @@ export function CallInterface({
                       animate={{ opacity: 1, y: 0 }}
                       className="space-y-1"
                     >
-                      <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">You (Sent as {targetLangName})</p>
+                      <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">You (Sent as {currentTargetLangName})</p>
                       <p className="text-lg font-medium text-gold text-center leading-relaxed">
                         {mySubtitles[mySubtitles.length - 1]}
                       </p>
@@ -907,14 +1029,14 @@ export function CallInterface({
                     </motion.div>
                   )}
                   {remoteSubtitles.length === 0 && mySubtitles.length === 0 && (
-                    <p className="text-white/40 animate-pulse uppercase tracking-[0.3em] text-xs font-bold">Connecting Secure Translation...</p>
+                    <p className="text-white/40 animate-pulse uppercase tracking-[0.3em] text-xs font-bold">Connecting Translation...</p>
                   )}
                  </AnimatePresence>
               </div>
               {isSpeaking && (
                 <div className="flex items-center justify-center gap-2 text-gold animate-pulse">
                   <Volume2 className="w-4 h-4" />
-                  <span className="text-[10px] font-bold uppercase tracking-[0.3em]">Neural Voice Active</span>
+                  <span className="text-[10px] font-bold uppercase tracking-[0.3em]">Voice Active</span>
                 </div>
               )}
             </div>
@@ -995,7 +1117,7 @@ export function CallInterface({
               "text-[9px] font-black uppercase tracking-widest transition-colors",
               isVideoOff ? "text-red-500" : "text-white"
             )}>
-              {isVideoOff ? 'Camera Stopped' : 'Camera Active'}
+              {isVideoOff ? 'Video Off' : 'Video On'}
             </span>
           </div>
         )}

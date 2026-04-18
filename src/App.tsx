@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Modality } from "@google/genai";
 import { 
   Languages, 
   MessageSquare, 
@@ -13,7 +13,6 @@ import {
   Mic,
   MicOff,
   Camera, 
-  CameraOff,
   Send, 
   User, 
   LogOut, 
@@ -31,7 +30,6 @@ import {
   Eye,
   CheckCircle2,
   ChevronDown,
-  ArrowRight,
   ArrowRightLeft,
   PenLine,
   Square,
@@ -44,9 +42,7 @@ import {
   BrainCircuit,
   Zap,
   Star,
-  MessageSquarePlus,
-  Crown,
-  AlertTriangle
+  MessageSquarePlus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from "@/lib/utils";
@@ -56,7 +52,7 @@ import { LanguageSelector } from './constants/LanguageSelector';
 import { RealTimeChat, CallInterface } from './components/PremiumFeatures';
 import { PolicyPages } from './components/PolicyPages';
 import { GlobalMap } from './components/GlobalMap';
-import { SubscriptionScreen } from './components/SubscriptionScreen';
+import { SubscriptionPage } from './components/SubscriptionPage';
 import { 
   signInWithPopup, 
   GoogleAuthProvider, 
@@ -119,122 +115,16 @@ type CallRecord = {
 // --- AI Service ---
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// --- Firestore Error Handling ---
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId: string | undefined;
-    email: string | null | undefined;
-    emailVerified: boolean | undefined;
-    isAnonymous: boolean | undefined;
-    tenantId: string | null | undefined;
-    providerInfo: {
-      providerId: string;
-      displayName: string | null;
-      email: string | null;
-      photoUrl: string | null;
-    }[];
-  }
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
-    },
-    operationType,
-    path
-  }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
-}
-
-class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: Error | null }> {
-  constructor(props: { children: React.ReactNode }) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true, error };
-  }
-
-  render() {
-    if (this.state.hasError) {
-      let errorDetails = null;
-      try {
-        errorDetails = JSON.parse(this.state.error?.message || '');
-      } catch (e) {
-        // Not a JSON error
-      }
-
-      return (
-        <div className="min-h-screen bg-bg-deep flex items-center justify-center p-6 text-center">
-          <div className="max-w-md w-full bg-surface border border-white/10 rounded-[2.5rem] p-10 space-y-6 shadow-2xl">
-            <div className="w-20 h-20 rounded-3xl bg-red-500/10 flex items-center justify-center mx-auto border border-red-500/20">
-              <AlertTriangle className="w-10 h-10 text-red-500" />
-            </div>
-            <div className="space-y-2">
-              <h2 className="text-2xl font-serif font-bold text-white">Something went wrong</h2>
-              <p className="text-text-dim text-sm leading-relaxed">
-                We encountered an unexpected error. Our team has been notified.
-              </p>
-            </div>
-            {errorDetails && (
-              <div className="bg-black/20 rounded-2xl p-4 text-left font-mono text-[10px] text-red-400/80 overflow-auto max-h-40 border border-red-500/10">
-                <p className="font-bold uppercase tracking-wider mb-2 text-red-400">Error Context:</p>
-                <pre>{JSON.stringify(errorDetails, null, 2)}</pre>
-              </div>
-            )}
-            <Button 
-              onClick={() => window.location.reload()}
-              className="w-full bg-red-500 hover:bg-red-600 text-white font-bold h-14 rounded-2xl shadow-lg shadow-red-500/20"
-            >
-              Reload Application
-            </Button>
-          </div>
-        </div>
-      );
-    }
-
-    return this.props.children;
-  }
-}
-
 export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('home');
+  const [showPricing, setShowPricing] = useState(false);
   const [translatorSubTab, setTranslatorSubTab] = useState<'text' | 'chat' | 'camera' | 'document'>('text');
   const [isPremium, setIsPremium] = useState(false);
-  const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
-  const [unlockedPlans, setUnlockedPlans] = useState<string[]>([]);
   const [activeCall, setActiveCall] = useState<'voice' | 'video' | null>(null);
   const [selectedRecipient, setSelectedRecipient] = useState<{ uid: string, displayName: string, photoURL: string } | null>(null);
   const [selectedChatRecipient, setSelectedChatRecipient] = useState<{ uid: string, displayName: string, photoURL: string } | null>(null);
-  const [chatSearch, setChatSearch] = useState('');
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [activePolicy, setActivePolicy] = useState('about');
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -242,11 +132,8 @@ export default function App() {
   // Learning Hub State
   const [wordOfTheDay, setWordOfTheDay] = useState<any>(null);
   const [isLearningLoading, setIsLearningLoading] = useState(false);
-  const [quizSelection, setQuizSelection] = useState<string | null>(null);
-  const [quizResult, setQuizResult] = useState<'correct' | 'incorrect' | null>(null);
-  const [quizScore, setQuizScore] = useState(0);
-  const [quizTotal, setQuizTotal] = useState(0);
-  const [previousWords, setPreviousWords] = useState<string[]>([]);
+  const [quizStatus, setQuizStatus] = useState<'idle' | 'correct' | 'incorrect'>('idle');
+  const [selectedQuizAnswer, setSelectedQuizAnswer] = useState<string | null>(null);
   
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -260,6 +147,15 @@ export default function App() {
   const [editDefaultTargetLang, setEditDefaultTargetLang] = useState('ja-JP');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isGeneratingAvatar, setIsGeneratingAvatar] = useState(false);
+
+  useEffect(() => {
+    if (showPricing) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => { document.body.style.overflow = 'unset'; };
+  }, [showPricing]);
   
   // Translation State
   const [sourceText, setSourceText] = useState('');
@@ -288,15 +184,6 @@ export default function App() {
   
   // Favorites State (Mock for now, can be connected to Firebase later)
   const [favorites, setFavorites] = useState<TranslationHistory[]>([]);
-
-  // Auto-stop camera on tab switch
-  useEffect(() => {
-    if (activeTab !== 'home' || translatorSubTab !== 'camera') {
-      if (isCameraActive) {
-        stopCamera();
-      }
-    }
-  }, [activeTab, translatorSubTab]);
   
   // --- Auth Handlers ---
   useEffect(() => {
@@ -316,7 +203,6 @@ export default function App() {
             defaultSourceLang: 'en-GB',
             defaultTargetLang: 'ja-JP',
             isPremium: false,
-            unlockedPlans: [],
             createdAt: serverTimestamp()
           });
           // Store sensitive data separately
@@ -325,11 +211,8 @@ export default function App() {
             updatedAt: serverTimestamp()
           });
           setIsPremium(false);
-          setUnlockedPlans([]);
         } else {
-          const data = userSnap.data();
-          setIsPremium(data.isPremium || false);
-          setUnlockedPlans(data.unlockedPlans || []);
+          setIsPremium(userSnap.data().isPremium || false);
         }
       } else {
         setUserProfile(null);
@@ -345,8 +228,6 @@ export default function App() {
       if (doc.exists()) {
         const data = doc.data();
         setUserProfile(data);
-        setIsPremium(data.isPremium || false);
-        setUnlockedPlans(data.unlockedPlans || []);
         setEditDisplayName(data.displayName || '');
         setEditPreferredLanguage(data.preferredLanguage || 'en-GB');
         setEditDefaultSourceLang(data.defaultSourceLang || 'en-GB');
@@ -362,18 +243,16 @@ export default function App() {
   const handleUpdateProfile = async () => {
     if (!user) return;
     setIsSavingProfile(true);
-    const userPath = `users/${user.uid}`;
     try {
-      await setDoc(doc(db, userPath), {
+      await setDoc(doc(db, 'users', user.uid), {
         displayName: editDisplayName,
         preferredLanguage: editPreferredLanguage,
         defaultSourceLang: editDefaultSourceLang,
         defaultTargetLang: editDefaultTargetLang,
-        updatedAt: serverTimestamp()
       }, { merge: true });
       setIsEditingProfile(false);
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, userPath);
+      console.error("Profile update failed:", error);
     } finally {
       setIsSavingProfile(false);
     }
@@ -381,19 +260,18 @@ export default function App() {
 
   const handleToggleFeature = async (feature: 'isVoiceCloningEnabled' | 'isSmartReplyEnabled') => {
     if (!user || !userProfile) return;
-    const userPath = `users/${user.uid}`;
     const newValue = userProfile[feature] === undefined ? (feature === 'isSmartReplyEnabled' ? false : true) : !userProfile[feature];
     try {
-      await setDoc(doc(db, userPath), {
+      await setDoc(doc(db, 'users', user.uid), {
         [feature]: newValue,
         updatedAt: serverTimestamp()
       }, { merge: true });
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, userPath);
+      console.error(`Error toggling ${feature}:`, error);
     }
   };
 
-  const generateAIProfilePic = async () => {
+  const generateCustomAvatar = async () => {
     if (!user) return;
     setIsGeneratingAvatar(true);
     try {
@@ -414,7 +292,7 @@ export default function App() {
         await setDoc(doc(db, 'users', user.uid), { photoURL: imageUrl }, { merge: true });
       }
     } catch (error) {
-      console.error("AI Avatar Error:", error);
+      console.error("Avatar Error:", error);
     } finally {
       setIsGeneratingAvatar(false);
     }
@@ -505,27 +383,37 @@ export default function App() {
   // --- Learning Hub Logic ---
   const fetchWordOfTheDay = async () => {
     setIsLearningLoading(true);
-    setQuizSelection(null);
-    setQuizResult(null);
+    setQuizStatus('idle');
+    setSelectedQuizAnswer(null);
     try {
       const targetLangName = LANGUAGES.find(l => l.code === targetLang)?.name || targetLang;
+      const categories = ['Travel', 'Food & Dining', 'Business', 'Emotions', 'Modern Slang', 'Technology', 'Daily Life', 'Nature', 'Culture', 'Health'];
+      const randomCategory = categories[Math.floor(Math.random() * categories.length)];
+      const previousWord = wordOfTheDay?.word || 'none';
+
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: `Generate a NEW and UNIQUE "Word of the Day" to help someone learn ${targetLangName}. 
-        EXCLUDE these words: ${previousWords.join(', ')}.
-        Return it as a JSON object with these fields: word, translation, pronunciation, exampleSentence, exampleTranslation, distractors (an array of 2 plausible but incorrect translations). 
+        contents: `Generate a UNIQUE and dynamic translation challenge to help someone learn ${targetLangName}. 
+        Focus on the category: ${randomCategory}.
+        AVOID repeating the previous word: ${previousWord}.
+        Pick a random but useful word, expression, or idiom level-appropriate for an intermediate learner. 
+        Context/Timestamp Seed: ${Date.now()}
+        Return it as a JSON object with these fields: word, translation, pronunciation, exampleSentence, exampleTranslation, options (an array of 3 possible translations, ONE OF WHICH MUST BE EXACTLY THE SAME STRING AS THE "translation" FIELD). 
         Only return the JSON.`,
       });
       const text = response.text || "{}";
       const cleaned = text.replace(/```json|```/g, '').trim();
       const parsed = JSON.parse(cleaned);
+      parsed.category = randomCategory;
       
-      // Update previous words list (keep last 20 to avoid bloat but ensure variety)
-      setPreviousWords(prev => [parsed.word, ...prev].slice(0, 20));
+      // Ensure options are shuffled if not already
+      if (parsed.options) {
+        parsed.options = parsed.options.sort(() => Math.random() - 0.5);
+      } else {
+        parsed.options = [parsed.translation, "Friend", "Water"].sort(() => Math.random() - 0.5);
+      }
       
-      // Shuffle options for the quiz
-      const options = [parsed.translation, ...(parsed.distractors || ["Something else", "I don't know"])].sort(() => Math.random() - 0.5);
-      setWordOfTheDay({ ...parsed, options });
+      setWordOfTheDay(parsed);
     } catch (e) {
       console.error("Learning hub error:", e);
     } finally {
@@ -533,8 +421,33 @@ export default function App() {
     }
   };
 
+  const handleQuizAnswer = (answer: string) => {
+    if (quizStatus !== 'idle') return;
+    
+    setSelectedQuizAnswer(answer);
+    
+    // Normalize for comparison to handle case/whitespace/punctuation inconsistencies
+    const normalize = (s: string) => s.trim().toLowerCase().replace(/[.,!?;:]/g, '');
+    const isCorrect = normalize(answer) === normalize(wordOfTheDay.translation);
+
+    if (isCorrect) {
+      setQuizStatus('correct');
+      // "Endless" behavior: fetch new word after delay
+      setTimeout(() => {
+        fetchWordOfTheDay();
+      }, 2500);
+    } else {
+      setQuizStatus('incorrect');
+      // Reset after a short delay so they can try again or just wait
+      setTimeout(() => {
+        setQuizStatus('idle');
+        setSelectedQuizAnswer(null);
+      }, 1500);
+    }
+  };
+
   useEffect(() => {
-    if (activeTab === 'learning') {
+    if (activeTab === 'learning' && !wordOfTheDay) {
       fetchWordOfTheDay();
     }
   }, [activeTab, targetLang]);
@@ -577,7 +490,7 @@ export default function App() {
           ]
         });
 
-        setOcrResult(response.text || 'No response from AI.');
+        setOcrResult(response.text || 'No response received.');
       } catch (error) {
         console.error("Document translation failed:", error);
         setOcrResult("Failed to process document.");
@@ -589,31 +502,28 @@ export default function App() {
   };
 
   const handleUpgrade = () => {
-    setIsSubscriptionOpen(true);
+    setShowPricing(true);
   };
 
-  const handlePurchase = async (plan: string, tier: 'monthly' | 'yearly') => {
+  const handleSubscribe = async (plan: string, billing: 'monthly' | 'yearly') => {
     if (!user) return;
-    const userPath = `users/${user.uid}`;
     try {
-      const userRef = doc(db, userPath);
-      const newUnlockedPlans = unlockedPlans.includes(plan) ? unlockedPlans : [...unlockedPlans, plan];
-      const updateData: any = {
-        unlockedPlans: newUnlockedPlans,
-        updatedAt: serverTimestamp()
-      };
+      const userRef = doc(db, 'users', user.uid);
+      // Determine which premium features were bought
+      const isCommPlan = plan.includes('Communication');
+      const isLearnPlan = plan.includes('Learning');
       
-      // If communication plan is purchased, unlock general premium features
-      if (plan === 'comm') {
-        updateData.isPremium = true;
-      }
-
-      await setDoc(userRef, updateData, { merge: true });
-      setUnlockedPlans(newUnlockedPlans);
-      if (plan === 'comm') setIsPremium(true);
-      setIsSubscriptionOpen(false);
+      await setDoc(userRef, { 
+        isPremium: true,
+        planType: plan,
+        billingCycle: billing,
+        purchasedAt: serverTimestamp()
+      }, { merge: true });
+      
+      setIsPremium(true);
+      setShowPricing(false);
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, userPath);
+      console.error("Upgrade failed:", error);
     }
   };
 
@@ -764,10 +674,59 @@ export default function App() {
     recognition.start();
   };
 
-  const playAudio = (text: string, lang: string) => {
+  const playAudio = async (text: string, lang: string) => {
     if (!text) return;
+    
+    // We attempt Gemini TTS FIRST for superior pronunciation in non-English languages
+    try {
+      const langName = LANGUAGES.find(l => l.code === lang)?.name || lang;
+      
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview", // Flash-3 is faster and good for TTS tasks
+        contents: [{ parts: [{ text: `Recite the following ${langName} text clearly and naturally: ${text}` }] }],
+        config: {
+          responseModalities: ["AUDIO"],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: 'Kore' },
+            },
+          },
+        },
+      });
+
+      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (base64Audio) {
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const binaryString = window.atob(base64Audio);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        
+        const pcmData = new Int16Array(bytes.buffer);
+        const floatData = new Float32Array(pcmData.length);
+        for (let i = 0; i < pcmData.length; i++) {
+          floatData[i] = pcmData[i] / 32768; // Convert 16-bit PCM to float
+        }
+        
+        const buffer = audioCtx.createBuffer(1, floatData.length, 24000);
+        buffer.copyToChannel(floatData, 0);
+        
+        const source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioCtx.destination);
+        source.start();
+        return;
+      }
+    } catch (error) {
+      console.error("Gemini TTS Error, falling back to browser:", error);
+    }
+
+    // Fallback to browser TTS if Gemini fails or is unavailable
+    window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = lang;
+    utterance.rate = 0.9;
     window.speechSynthesis.speak(utterance);
   };
 
@@ -850,7 +809,7 @@ export default function App() {
         ]
       });
 
-      const result = response.text || 'No response from AI.';
+      const result = response.text || 'No response received.';
       setOcrResult(result);
 
       const translationMatch = result.match(/TRANSLATION:\s*([\s\S]*)/i);
@@ -950,8 +909,7 @@ export default function App() {
   }
 
   return (
-    <ErrorBoundary>
-      <div className="min-h-screen bg-bg-deep text-white font-sans overflow-x-hidden pb-24">
+    <div className="min-h-screen bg-bg-deep text-white font-sans overflow-x-hidden pb-24">
       {/* --- Header --- */}
       <header className="sticky top-0 z-[60] bg-bg-deep/80 backdrop-blur-xl px-6 pt-8 pb-4 flex items-center justify-between border-b border-white/5">
         <div className="flex items-center gap-3">
@@ -962,6 +920,7 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-2xl font-serif font-bold tracking-tight text-white">GlobalLingo</h1>
+            <p className="text-[10px] font-bold tracking-[0.2em] text-gold uppercase">Powered by GlobalLingo</p>
           </div>
         </div>
         
@@ -1019,11 +978,11 @@ export default function App() {
             <DropdownMenuGroup>
               <DropdownMenuItem 
                 onSelect={() => {
-                  if (!selectedRecipient && !selectedChatRecipient) {
+                  if (!selectedRecipient) {
                     setActiveTab('chat');
                     return;
                   }
-                  setActiveCall('voice');
+                  isPremium ? setActiveCall('voice') : setActiveTab('profile');
                 }}
                 className="flex items-center gap-3 p-3 rounded-xl cursor-pointer hover:bg-white/5 transition-colors group"
               >
@@ -1032,18 +991,18 @@ export default function App() {
                 </div>
                 <div className="flex flex-col">
                   <span className="font-serif font-bold text-sm">Voice Call</span>
-                  {(!selectedRecipient && !selectedChatRecipient) && <span className="text-[8px] text-red-400 font-bold uppercase tracking-tighter">Select contact first</span>}
-                  {(selectedRecipient || selectedChatRecipient) && <span className="text-[8px] text-gold font-bold uppercase tracking-tighter">To {(selectedRecipient || selectedChatRecipient)?.displayName}</span>}
+                  {!selectedRecipient && <span className="text-[8px] text-red-400 font-bold uppercase tracking-tighter">Select contact first</span>}
+                  {isPremium && selectedRecipient && <span className="text-[8px] text-gold font-bold uppercase tracking-tighter">To {selectedRecipient.displayName}</span>}
                 </div>
               </DropdownMenuItem>
               
               <DropdownMenuItem 
                 onSelect={() => {
-                  if (!selectedRecipient && !selectedChatRecipient) {
+                  if (!selectedRecipient) {
                     setActiveTab('chat');
                     return;
                   }
-                  setActiveCall('video');
+                  isPremium ? setActiveCall('video') : setActiveTab('profile');
                 }}
                 className="flex items-center gap-3 p-3 rounded-xl cursor-pointer hover:bg-white/5 transition-colors group"
               >
@@ -1052,8 +1011,8 @@ export default function App() {
                 </div>
                 <div className="flex flex-col">
                   <span className="font-serif font-bold text-sm">Video Call</span>
-                  {(!selectedRecipient && !selectedChatRecipient) && <span className="text-[8px] text-red-400 font-bold uppercase tracking-tighter">Select contact first</span>}
-                  {(selectedRecipient || selectedChatRecipient) && <span className="text-[8px] text-gold font-bold uppercase tracking-tighter">To {(selectedRecipient || selectedChatRecipient)?.displayName}</span>}
+                  {!selectedRecipient && <span className="text-[8px] text-red-400 font-bold uppercase tracking-tighter">Select contact first</span>}
+                  {isPremium && selectedRecipient && <span className="text-[8px] text-gold font-bold uppercase tracking-tighter">To {selectedRecipient.displayName}</span>}
                 </div>
               </DropdownMenuItem>
             </DropdownMenuGroup>
@@ -1073,6 +1032,34 @@ export default function App() {
           </DropdownMenuContent>
         </DropdownMenu>
       </header>
+
+      <AnimatePresence>
+        {showPricing && (
+          <motion.div 
+            initial={{ opacity: 0, y: '100%' }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: '100%' }}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            className="fixed inset-0 z-[1000] bg-bg-deep overflow-y-scroll pointer-events-auto"
+          >
+            <div className="min-h-full py-20 px-6 sm:px-12 flex flex-col">
+              <div className="max-w-5xl mx-auto w-full relative">
+                <div className="flex justify-end sticky top-0 z-[1100] mb-8">
+                  <Button 
+                    onClick={() => setShowPricing(false)}
+                    variant="ghost"
+                    size="icon"
+                    className="w-12 h-12 rounded-full bg-white/10 border border-white/20 hover:bg-white/20 text-white shadow-xl backdrop-blur-md transition-all active:scale-95"
+                  >
+                    <X className="w-6 h-6" />
+                  </Button>
+                </div>
+                <SubscriptionPage onSubscribe={handleSubscribe} />
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <main className="px-6 max-w-2xl mx-auto">
         <AnimatePresence mode="wait">
@@ -1156,7 +1143,7 @@ export default function App() {
                                 className="flex items-center gap-1.5 px-2 py-0.5 bg-gold/10 rounded-full border border-gold/20"
                               >
                                 <div className="w-1 h-1 rounded-full bg-gold animate-ping" />
-                                <span className="text-[8px] font-bold text-gold uppercase tracking-tighter">AI Detecting Language...</span>
+                                <span className="text-[8px] font-bold text-gold uppercase tracking-tighter">Detecting Language...</span>
                               </motion.div>
                             )}
                           </AnimatePresence>
@@ -1270,42 +1257,27 @@ export default function App() {
                     ) : (
                       <div className="space-y-6">
                         {/* Chat Recipient Selection */}
-                        <div className="bg-surface p-4 rounded-3xl border border-white/5 space-y-4">
-                          <div className="flex items-center justify-between px-2">
-                            <p className="text-[10px] font-bold text-gold uppercase tracking-[0.2em]">Select Chat Partner</p>
-                            <div className="relative">
-                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-text-dim" />
-                              <Input 
-                                value={chatSearch}
-                                onChange={(e) => setChatSearch(e.target.value)}
-                                placeholder="Search contacts..."
-                                className="h-8 pl-8 text-[10px] bg-bg-deep border-white/5 rounded-full w-40 focus:border-gold/30 transition-all focus:w-48"
-                              />
-                            </div>
-                          </div>
+                        <div className="bg-surface p-4 rounded-3xl border border-white/5">
+                          <p className="text-[10px] font-bold text-gold uppercase tracking-[0.2em] mb-4 px-2">Select Chat Partner</p>
                           <ScrollArea className="w-full">
                             <div className="flex gap-3 pb-2">
                               {/* Global Chat Option */}
-                              {!chatSearch && (
-                                <button
-                                  onClick={() => setSelectedChatRecipient(null)}
-                                  className={cn(
-                                    "flex flex-col items-center gap-2 p-3 rounded-2xl transition-all border min-w-[80px]",
-                                    !selectedChatRecipient 
-                                      ? "bg-gold/10 border-gold/30" 
-                                      : "bg-bg-deep/50 border-white/5 hover:bg-white/5"
-                                  )}
-                                >
-                                  <div className="w-12 h-12 rounded-full bg-gold/20 flex items-center justify-center border border-gold/30">
-                                    <Globe className="w-6 h-6 text-gold" />
-                                  </div>
-                                  <span className="text-[10px] font-bold uppercase tracking-tighter">Global</span>
-                                </button>
-                              )}
+                              <button
+                                onClick={() => setSelectedChatRecipient(null)}
+                                className={cn(
+                                  "flex flex-col items-center gap-2 p-3 rounded-2xl transition-all border min-w-[80px]",
+                                  !selectedChatRecipient 
+                                    ? "bg-gold/10 border-gold/30" 
+                                    : "bg-bg-deep/50 border-white/5 hover:bg-white/5"
+                                )}
+                              >
+                                <div className="w-12 h-12 rounded-full bg-gold/20 flex items-center justify-center border border-gold/30">
+                                  <Globe className="w-6 h-6 text-gold" />
+                                </div>
+                                <span className="text-[10px] font-bold uppercase tracking-tighter">Global</span>
+                              </button>
 
-                              {allUsers
-                                .filter(u => u.displayName?.toLowerCase().includes(chatSearch.toLowerCase()))
-                                .map((u) => (
+                              {allUsers.map((u) => (
                                 <button
                                   key={u.uid}
                                   onClick={() => setSelectedChatRecipient(u)}
@@ -1397,38 +1369,32 @@ export default function App() {
 
                           {/* Controls */}
                           <div className="absolute bottom-8 left-0 right-0 flex justify-center items-center gap-6 px-8">
-                            <div className="flex flex-col items-center gap-2">
-                              <Button 
-                                onClick={stopCamera}
-                                variant="ghost"
-                                className="w-14 h-14 rounded-full bg-red-500/20 hover:bg-red-500/40 backdrop-blur-md border border-red-500/30 text-red-500 transition-all"
-                              >
-                                <CameraOff className="w-6 h-6" />
-                              </Button>
-                              <span className="text-[9px] font-black uppercase tracking-widest text-red-500">Stop Camera</span>
-                            </div>
+                            <Button 
+                              onClick={stopCamera}
+                              variant="ghost"
+                              className="w-14 h-14 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white"
+                            >
+                              <X className="w-6 h-6" />
+                            </Button>
                             
-                            <div className="flex flex-col items-center gap-2">
-                              <Button 
-                                onClick={captureAndTranslate}
-                                disabled={isOcrLoading}
-                                className="w-20 h-20 rounded-full bg-gold text-bg-deep shadow-2xl shadow-gold/40 flex items-center justify-center group active:scale-95 transition-all"
-                              >
-                                {isOcrLoading ? (
-                                  <motion.div 
-                                    animate={{ rotate: 360 }}
-                                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                                  >
-                                    <Sparkles className="w-8 h-8" />
-                                  </motion.div>
-                                ) : (
-                                  <div className="w-16 h-16 rounded-full border-4 border-bg-deep/20 flex items-center justify-center">
-                                    <div className="w-12 h-12 rounded-full bg-bg-deep/10" />
-                                  </div>
-                                )}
-                              </Button>
-                              <span className="text-[9px] font-black uppercase tracking-widest text-gold">Capture</span>
-                            </div>
+                            <Button 
+                              onClick={captureAndTranslate}
+                              disabled={isOcrLoading}
+                              className="w-20 h-20 rounded-full bg-gold text-bg-deep shadow-2xl shadow-gold/40 flex items-center justify-center group active:scale-95 transition-all"
+                            >
+                              {isOcrLoading ? (
+                                <motion.div 
+                                  animate={{ rotate: 360 }}
+                                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                                >
+                                  <Sparkles className="w-8 h-8" />
+                                </motion.div>
+                              ) : (
+                                <div className="w-16 h-16 rounded-full border-4 border-bg-deep/20 flex items-center justify-center">
+                                  <div className="w-12 h-12 rounded-full bg-bg-deep/10" />
+                                </div>
+                              )}
+                            </Button>
 
                             <div className="w-14 h-14" /> {/* Spacer */}
                           </div>
@@ -1448,7 +1414,7 @@ export default function App() {
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                               <Sparkles className="w-4 h-4 text-gold" />
-                              <p className="text-[10px] font-bold text-gold uppercase tracking-widest">AI Vision Result</p>
+                              <p className="text-[10px] font-bold text-gold uppercase tracking-widest">Vision Result</p>
                             </div>
                             <div className="flex items-center gap-2">
                               <button 
@@ -1596,137 +1562,61 @@ export default function App() {
               exit={{ opacity: 0, x: -20 }}
               className="space-y-8"
             >
-              {isPremium ? (
-                <>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-[10px] font-bold text-gold uppercase tracking-[0.2em]">P2P Communication</p>
-                      <h2 className="text-3xl font-serif font-bold">Real-Time Chat</h2>
-                    </div>
-                    
-                    {selectedChatRecipient && (
-                      <div className="flex gap-2">
-                        <Button 
-                          onClick={() => setActiveCall('voice')}
-                          className="bg-white/5 border border-white/10 hover:bg-gold hover:text-bg-deep rounded-2xl h-12 px-6 font-bold"
-                        >
-                          <Phone className="w-4 h-4 mr-2" />
-                          Call
-                        </Button>
-                        <Button 
-                          onClick={() => setActiveCall('video')}
-                          className="bg-gold text-bg-deep hover:bg-gold/90 rounded-2xl h-12 px-6 font-bold shadow-lg shadow-gold/20"
-                        >
-                          <Video className="w-4 h-4 mr-2" />
-                          Video
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* Contacts List */}
-                    <div className="bg-surface rounded-3xl border border-white/5 p-6 space-y-6">
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-dim" />
-                        <Input 
-                          placeholder="Search contacts..." 
-                          className="bg-bg-deep border-white/5 pl-10 rounded-xl h-12"
-                          value={chatSearch}
-                          onChange={(e) => setChatSearch(e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        {allUsers
-                          .filter(u => u.displayName?.toLowerCase().includes(chatSearch.toLowerCase()))
-                          .map((u) => (
-                          <button
-                            key={u.uid}
-                            onClick={() => setSelectedChatRecipient(u)}
-                            className={cn(
-                              "w-full p-4 rounded-2xl flex items-center gap-4 transition-all border",
-                              selectedChatRecipient?.uid === u.uid 
-                                ? "bg-gold/10 border-gold/30" 
-                                : "bg-white/5 border-transparent hover:border-white/10"
-                            )}
-                          >
-                            <Avatar className="w-12 h-12 border-2 border-gold/20">
-                              <AvatarImage src={u.photoURL} />
-                              <AvatarFallback className="bg-bg-deep text-gold">{u.displayName?.[0]}</AvatarFallback>
-                            </Avatar>
-                            <div className="text-left flex-1">
-                              <p className="font-bold text-white">{u.displayName || 'GlobalLingo User'}</p>
-                              <p className="text-[10px] text-text-dim uppercase tracking-widest">Online</p>
-                            </div>
-                            <div className="flex gap-1">
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedChatRecipient(u);
-                                  setActiveCall('voice');
-                                }}
-                                className="w-8 h-8 rounded-full hover:bg-gold/20 hover:text-gold"
-                              >
-                                <Phone className="w-3.5 h-3.5" />
-                              </Button>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedChatRecipient(u);
-                                  setActiveCall('video');
-                                }}
-                                className="w-8 h-8 rounded-full hover:bg-gold/20 hover:text-gold"
-                              >
-                                <Video className="w-3.5 h-3.5" />
-                              </Button>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Chat Interface */}
-                    <div className="lg:col-span-2">
-                      <RealTimeChat 
-                        targetLang={targetLang} 
-                        targetLangName={LANGUAGES.find(l => l.code === targetLang)?.name || targetLang} 
-                        sourceLang={sourceLang}
-                        sourceLangName={LANGUAGES.find(l => l.code === sourceLang)?.name || sourceLang}
-                        recipientId={selectedChatRecipient?.uid}
-                        recipientName={selectedChatRecipient?.displayName}
-                        isSmartReplyEnabled={userProfile?.isSmartReplyEnabled}
-                      />
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="bg-surface p-12 rounded-[3.5rem] border border-gold/30 shadow-2xl relative overflow-hidden group max-w-2xl mx-auto flex flex-col items-center text-center space-y-8">
-                  <div className="absolute top-0 right-0 p-8 opacity-10 blur-2xl group-hover:scale-110 transition-transform">
-                    <MessageSquare className="w-64 h-64 text-gold" />
-                  </div>
-                  <div className="w-24 h-24 rounded-[2rem] bg-gold/10 flex items-center justify-center border border-gold/20 shadow-inner relative z-10">
-                    <MessageSquare className="w-12 h-12 text-gold fill-gold" />
-                  </div>
-                  <div className="space-y-4 relative z-10">
-                    <Badge className="bg-gold text-bg-deep font-black px-4 py-1">GLOBAL COMM</Badge>
-                    <h3 className="text-4xl font-serif font-bold text-white">Unlock Real-Time Chat</h3>
-                    <p className="text-text-dim max-w-sm mx-auto leading-relaxed">
-                      Connect instantly with anyone, anywhere. Unlimited P2P chat with neural translation and smart contextual replies.
-                    </p>
-                  </div>
-                  <Button 
-                    onClick={() => setIsSubscriptionOpen(true)}
-                    className="bg-gold hover:bg-gold/90 text-bg-deep font-black h-16 px-12 rounded-2xl shadow-xl shadow-gold/20 text-lg transition-all hover:scale-105 relative z-10"
-                  >
-                    Unlock for $10/Month
-                  </Button>
-                  <p className="text-[9px] font-bold text-text-dim/40 uppercase tracking-[0.3em] relative z-10">Cancel Anytime • End-to-End Encryption</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-bold text-gold uppercase tracking-[0.2em]">P2P Communication</p>
+                  <h2 className="text-3xl font-serif font-bold">Real-Time Chat</h2>
                 </div>
-              )}
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Contacts List */}
+                <div className="bg-surface rounded-3xl border border-white/5 p-6 space-y-6">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-dim" />
+                    <Input 
+                      placeholder="Search contacts..." 
+                      className="bg-bg-deep border-white/5 pl-10 rounded-xl h-12"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    {allUsers.map((u) => (
+                      <button
+                        key={u.uid}
+                        onClick={() => setSelectedChatRecipient(u)}
+                        className={cn(
+                          "w-full p-4 rounded-2xl flex items-center gap-4 transition-all border",
+                          selectedChatRecipient?.uid === u.uid 
+                            ? "bg-gold/10 border-gold/30" 
+                            : "bg-white/5 border-transparent hover:border-white/10"
+                        )}
+                      >
+                        <Avatar className="w-12 h-12 border-2 border-gold/20">
+                          <AvatarImage src={u.photoURL} />
+                          <AvatarFallback className="bg-bg-deep text-gold">{u.displayName?.[0]}</AvatarFallback>
+                        </Avatar>
+                        <div className="text-left">
+                          <p className="font-bold text-white">{u.displayName || 'GlobalLingo User'}</p>
+                          <p className="text-[10px] text-text-dim uppercase tracking-widest">Online</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Chat Interface */}
+                <div className="lg:col-span-2">
+                  <RealTimeChat 
+                    targetLang={targetLang} 
+                    targetLangName={LANGUAGES.find(l => l.code === targetLang)?.name || targetLang} 
+                    sourceLang={sourceLang}
+                    sourceLangName={LANGUAGES.find(l => l.code === sourceLang)?.name || sourceLang}
+                    recipientId={selectedChatRecipient?.uid}
+                    recipientName={selectedChatRecipient?.displayName}
+                    isSmartReplyEnabled={userProfile?.isSmartReplyEnabled}
+                  />
+                </div>
+              </div>
             </motion.div>
           )}
 
@@ -1738,40 +1628,32 @@ export default function App() {
               exit={{ opacity: 0, x: -20 }}
               className="space-y-8"
             >
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-center justify-between">
                 <div>
                   <p className="text-[10px] font-bold text-gold uppercase tracking-[0.2em]">Learning Hub</p>
                   <h2 className="text-3xl font-serif font-bold">Master {LANGUAGES.find(l => l.code === targetLang)?.name}</h2>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-48">
-                    <LanguageSelector 
-                      selectedCode={targetLang}
-                      onSelect={(code) => setTargetLang(code)}
-                      label="I am learning..."
-                    />
-                  </div>
-                  <Button onClick={fetchWordOfTheDay} variant="ghost" className="text-gold h-14 px-6 rounded-2xl bg-white/5 border border-white/10">
-                    <Zap className="w-4 h-4 mr-2" />
-                    Refresh
-                  </Button>
-                </div>
+                <Button onClick={fetchWordOfTheDay} variant="ghost" className="text-gold">
+                  <Zap className="w-4 h-4 mr-2" />
+                  Refresh
+                </Button>
               </div>
 
-              {unlockedPlans.includes('learning') ? (
-              isLearningLoading ? (
+              {isLearningLoading ? (
                 <div className="h-64 flex flex-col items-center justify-center gap-4 bg-surface rounded-3xl border border-white/5">
                   <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: "linear" }}>
                     <BrainCircuit className="w-12 h-12 text-gold/50" />
                   </motion.div>
-                  <p className="text-text-dim animate-pulse uppercase tracking-widest text-[10px] font-bold">AI is curating your lesson...</p>
+                  <p className="text-text-dim animate-pulse uppercase tracking-widest text-[10px] font-bold">Curating your lesson...</p>
                 </div>
               ) : wordOfTheDay && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <Card className="bg-surface border-white/5 rounded-3xl overflow-hidden shadow-2xl">
                     <CardHeader className="bg-gold/10 border-b border-gold/20 p-6">
                       <div className="flex items-center justify-between">
-                        <Badge className="bg-gold text-bg-deep font-bold">Word of the Day</Badge>
+                        <Badge className="bg-gold text-bg-deep font-bold">
+                          {wordOfTheDay.category || 'Word of the Day'}
+                        </Badge>
                         <Volume2 
                           className="w-5 h-5 text-gold cursor-pointer hover:scale-110 transition-transform" 
                           onClick={() => playAudio(wordOfTheDay.word, targetLang)}
@@ -1797,75 +1679,51 @@ export default function App() {
                     <div className="bg-surface p-6 rounded-3xl border border-white/5 space-y-4">
                       <div className="flex items-center justify-between">
                         <h4 className="font-serif font-bold text-xl">Quick Quiz</h4>
-                        {quizResult && (
+                        {quizStatus !== 'idle' && (
                           <motion.div 
-                            initial={{ opacity: 0, scale: 0.5 }}
-                            animate={{ opacity: 1, scale: 1 }}
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
                             className={cn(
                               "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest",
-                              quizResult === 'correct' ? "bg-green-500/20 text-green-400 border border-green-500/30" : "bg-red-500/20 text-red-400 border border-red-500/30"
+                              quizStatus === 'correct' ? "bg-green-500/20 text-green-400 border border-green-500/30" : "bg-red-500/20 text-red-400 border border-red-500/30"
                             )}
                           >
-                            {quizResult === 'correct' ? 'Perfect!' : 'Not quite!'}
+                            {quizStatus === 'correct' ? "Perfect!" : "Try Again"}
                           </motion.div>
                         )}
                       </div>
                       <p className="text-sm text-text-dim">What does <span className="text-gold font-bold">"{wordOfTheDay.word}"</span> mean?</p>
                       <div className="grid grid-cols-1 gap-2">
-                        {(wordOfTheDay.options || []).map((opt: string, i: number) => (
+                        {(wordOfTheDay.options || [wordOfTheDay.translation, "Option 2", "Option 3"]).map((opt: string, i: number) => (
                           <Button 
                             key={i} 
                             variant="ghost" 
-                            disabled={quizResult !== null}
-                            onClick={() => {
-                              setQuizSelection(opt);
-                              const isCorrect = opt === wordOfTheDay.translation;
-                              setQuizResult(isCorrect ? 'correct' : 'incorrect');
-                              if (isCorrect) setQuizScore(prev => prev + 1);
-                              setQuizTotal(prev => prev + 1);
-                            }}
+                            onClick={() => handleQuizAnswer(opt)}
                             className={cn(
-                              "justify-start bg-white/5 border border-white/10 rounded-xl h-12 transition-all",
-                              quizSelection === opt && quizResult === 'correct' && "bg-green-500/20 border-green-500/50 text-green-400",
-                              quizSelection === opt && quizResult === 'incorrect' && "bg-red-500/20 border-red-500/50 text-red-400",
-                              quizResult && opt === wordOfTheDay.translation && "bg-green-500/10 border-green-500/30 text-green-400",
-                              !quizResult && "hover:bg-gold hover:text-bg-deep hover:border-gold"
+                              "justify-start bg-white/5 border border-white/10 rounded-xl h-12 transition-all duration-300",
+                              selectedQuizAnswer === opt && quizStatus === 'correct' && "bg-green-500/20 border-green-500/50 text-green-400",
+                              selectedQuizAnswer === opt && quizStatus === 'incorrect' && "bg-red-500/20 border-red-500/50 text-red-400",
+                              quizStatus === 'idle' && "hover:bg-gold hover:text-bg-deep"
                             )}
                           >
-                            <div className="flex items-center justify-between w-full">
-                              <span>{opt}</span>
-                              {quizSelection === opt && (
-                                quizResult === 'correct' ? <CheckCircle2 className="w-4 h-4" /> : <X className="w-4 h-4" />
-                              )}
-                            </div>
+                            <span className="flex-1 text-left">{opt}</span>
+                            {selectedQuizAnswer === opt && quizStatus === 'correct' && <CheckCircle2 className="w-4 h-4 ml-2" />}
+                            {selectedQuizAnswer === opt && quizStatus === 'incorrect' && <X className="w-4 h-4 ml-2" />}
                           </Button>
                         ))}
                       </div>
-                      {quizResult === 'incorrect' && (
-                        <p className="text-[10px] text-text-dim italic text-center animate-in fade-in slide-in-from-bottom-1 duration-500">
-                          The correct answer was <span className="text-gold font-bold">"{wordOfTheDay.translation}"</span>
-                        </p>
-                      )}
-
-                      {quizResult && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
+                      {quizStatus === 'correct' ? (
+                        <p className="text-[10px] text-center text-green-400/60 font-medium animate-pulse">Loading next challenge...</p>
+                      ) : (
+                        <Button 
+                          onClick={fetchWordOfTheDay} 
+                          variant="ghost" 
+                          className="w-full text-[10px] font-bold text-gold/40 hover:text-gold uppercase tracking-[0.2em] h-8"
                         >
-                          <Button 
-                            onClick={fetchWordOfTheDay}
-                            className="w-full bg-gold text-bg-deep hover:bg-gold/90 h-12 rounded-xl font-bold shadow-lg shadow-gold/20"
-                          >
-                            Next Question
-                            <ArrowRight className="w-4 h-4 ml-2" />
-                          </Button>
-                        </motion.div>
+                          <Zap className="w-3 h-3 mr-2" />
+                          New Challenge
+                        </Button>
                       )}
-                      
-                      <div className="pt-2 border-t border-white/5 flex justify-between items-center text-[10px] font-bold text-text-dim uppercase tracking-widest">
-                        <span>Session Progress</span>
-                        <span className="text-gold">{quizScore} / {quizTotal} Correct</span>
-                      </div>
                     </div>
                     
                     <div className="bg-gold/5 p-6 rounded-3xl border border-gold/20 flex items-center gap-4">
@@ -1879,41 +1737,7 @@ export default function App() {
                     </div>
                   </div>
                 </div>
-               )) : (
-                <div className="bg-surface p-12 rounded-[3.5rem] border border-blue-400/30 shadow-2xl relative overflow-hidden group max-w-2xl mx-auto flex flex-col items-center text-center space-y-8">
-                  <div className="absolute top-0 right-0 p-8 opacity-10 blur-2xl group-hover:scale-110 transition-transform">
-                    <BookOpen className="w-64 h-64 text-blue-400" />
-                  </div>
-                  <div className="w-24 h-24 rounded-[2rem] bg-blue-400/10 flex items-center justify-center border border-blue-400/20 shadow-inner relative z-10">
-                    <Star className="w-12 h-12 text-blue-400 fill-blue-400" />
-                  </div>
-                  <div className="space-y-4 relative z-10">
-                    <Badge className="bg-blue-400 text-white font-black px-4 py-1">LINGO MASTERY</Badge>
-                    <h3 className="text-4xl font-serif font-bold text-white">Unlock Infinite Learning</h3>
-                    <p className="text-text-dim max-w-sm mx-auto leading-relaxed">
-                      Master any language with neural-powered word cycles, pronunciation analysis, and cultural mastery paths.
-                    </p>
-                  </div>
-                  <Button 
-                    onClick={() => setIsSubscriptionOpen(true)}
-                    className="bg-blue-400 hover:bg-blue-500 text-white font-black h-16 px-12 rounded-2xl shadow-xl shadow-blue-400/20 text-lg transition-all hover:scale-105 relative z-10"
-                  >
-                    Unlock for $5/Month
-                  </Button>
-                  <p className="text-[9px] font-bold text-text-dim/40 uppercase tracking-[0.3em] relative z-10">Cancel Anytime • Secure Neural Processing</p>
-                </div>
               )}
-            </motion.div>
-          )}
-
-          {activeTab === 'plans' && (
-            <motion.div
-              key="plans"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-            >
-              <SubscriptionScreen isPage onPurchase={handlePurchase} />
             </motion.div>
           )}
 
@@ -2085,7 +1909,7 @@ export default function App() {
                     <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 2, ease: "linear" }}>
                       <Sparkles className="w-12 h-12 text-gold" />
                     </motion.div>
-                    <p className="mt-4 text-gold font-bold uppercase tracking-widest text-[10px] animate-pulse">Gemini Generating Avatar...</p>
+                    <p className="mt-4 text-gold font-bold uppercase tracking-widest text-[10px] animate-pulse">Generating Avatar...</p>
                   </div>
                 )}
                 <div className="flex flex-col md:flex-row items-center gap-8">
@@ -2095,7 +1919,7 @@ export default function App() {
                       <AvatarFallback className="bg-bg-deep text-gold text-4xl font-serif">{userProfile?.displayName?.[0] || user?.displayName?.[0]}</AvatarFallback>
                     </Avatar>
                     <button 
-                      onClick={generateAIProfilePic}
+                      onClick={generateCustomAvatar}
                       className="absolute -bottom-2 -right-2 bg-gold text-bg-deep p-2 rounded-full shadow-lg hover:scale-110 transition-transform"
                     >
                       <Sparkles className="w-4 h-4" />
@@ -2229,7 +2053,7 @@ export default function App() {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
                             <BrainCircuit className="w-5 h-5 text-gold" />
-                            <p className="text-[10px] font-bold text-gold uppercase tracking-[0.2em]">AI Voice Cloning</p>
+                            <p className="text-[10px] font-bold text-gold uppercase tracking-[0.2em]">Voice Cloning</p>
                           </div>
                           <button 
                             onClick={() => handleToggleFeature('isVoiceCloningEnabled')}
@@ -2248,7 +2072,7 @@ export default function App() {
                           </button>
                         </div>
                         <p className="text-xs text-text-dim leading-relaxed">
-                          Use your own voice for neural translations during calls.
+                          Use your own voice for generated translations during calls.
                         </p>
                       </div>
 
@@ -2275,7 +2099,7 @@ export default function App() {
                           </button>
                         </div>
                         <p className="text-xs text-text-dim leading-relaxed">
-                          Enable smart contextual replies in your target language.
+                          Enable suggested contextual replies in your target language.
                         </p>
                       </div>
                     </div>
@@ -2398,7 +2222,7 @@ export default function App() {
                       <Badge className="bg-gold text-bg-deep font-bold">LIMITED OFFER</Badge>
                       <h3 className="text-3xl font-serif font-bold">Unlock the Full Experience</h3>
                       <p className="text-text-dim max-w-md">
-                        Get unlimited real-time calls, document translation, and exclusive neural voice cloning features.
+                        Get unlimited real-time calls, document translation, and exclusive voice cloning features.
                       </p>
                     </div>
                     <Button 
@@ -2426,7 +2250,7 @@ export default function App() {
               <h3 className="text-2xl font-serif font-bold text-white">GlobalLingo</h3>
             </div>
             <p className="text-text-dim text-sm max-w-xs">
-              Breaking language barriers with the power of Generative AI. Secure, fast, and accurate translations for the modern world.
+              Breaking language barriers with advanced technology. Secure, fast, and accurate translations for the modern world.
             </p>
           </div>
           
@@ -2481,7 +2305,7 @@ export default function App() {
         </div>
         <div className="max-w-4xl mx-auto mt-12 pt-8 border-t border-white/5 text-center">
           <p className="text-[10px] font-bold text-text-dim uppercase tracking-widest">
-            © 2026 GlobalLingo AI. All rights reserved.
+            © 2026 GlobalLingo. All rights reserved.
           </p>
         </div>
       </footer>
@@ -2570,14 +2394,20 @@ export default function App() {
           { id: 'home', icon: Globe, label: 'Translate' },
           { id: 'chat', icon: MessageSquare, label: 'Chat' },
           { id: 'learning', icon: BookOpen, label: 'Learn' },
-          { id: 'plans', icon: Crown, label: 'Plans' },
           { id: 'insights', icon: BarChart3, label: 'Insights' },
           { id: 'history', icon: History, label: 'History' },
+          { id: 'premium', icon: Sparkles, label: 'Premium' },
           { id: 'profile', icon: User, label: 'Profile' }
         ].map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => {
+              if (tab.id === 'premium') {
+                setShowPricing(true);
+              } else {
+                setActiveTab(tab.id);
+              }
+            }}
             className="flex flex-col items-center gap-1 group"
           >
             <div className={cn(
@@ -2586,12 +2416,12 @@ export default function App() {
             )}>
               <tab.icon className={cn(
                 "w-6 h-6 transition-all",
-                activeTab === tab.id ? "text-gold fill-gold" : "text-zinc-400"
+                activeTab === tab.id ? "text-gold fill-gold" : (tab.id === 'premium' ? "text-gold" : "text-zinc-400")
               )} />
             </div>
             <span className={cn(
               "text-[10px] font-bold uppercase tracking-wider transition-all",
-              activeTab === tab.id ? "text-gold" : "text-zinc-400"
+              activeTab === tab.id ? "text-gold" : (tab.id === 'premium' ? "text-gold" : "text-zinc-400")
             )}>
               {tab.label}
             </span>
@@ -2607,20 +2437,13 @@ export default function App() {
             targetLangName={LANGUAGES.find(l => l.code === targetLang)?.name || targetLang} 
             sourceLang={sourceLang}
             sourceLangName={LANGUAGES.find(l => l.code === sourceLang)?.name || sourceLang}
-            recipientName={selectedRecipient?.displayName || selectedChatRecipient?.displayName || 'GlobalLingo User'}
-            recipientPhoto={selectedRecipient?.photoURL || selectedChatRecipient?.photoURL}
+            recipientName={selectedRecipient?.displayName || 'GlobalLingo User'}
+            recipientPhoto={selectedRecipient?.photoURL}
             onClose={() => setActiveCall(null)} 
             isVoiceCloningEnabled={userProfile?.isVoiceCloningEnabled || false}
           />
         )}
       </AnimatePresence>
-
-      <SubscriptionScreen 
-        isOpen={isSubscriptionOpen} 
-        onClose={() => setIsSubscriptionOpen(false)}
-        onPurchase={handlePurchase}
-      />
     </div>
-  </ErrorBoundary>
   );
 }

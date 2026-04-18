@@ -1,6 +1,6 @@
 {
   "name": "GlobalLingo",
-  "description": "A cutting-edge communication ecosystem for real-time translation across 270+ languages, featuring multimodal translation, P2P chat, and live calling with real-time subtitles.",
+  "description": "A cutting-edge communication ecosystem for real-time translation across 270+ languages, featuring multimodal translation, P2P chat, and live calling with subtitles.",
   "requestFramePermissions": [
     "camera",
     "microphone"

@@ -9,7 +9,7 @@ export function PolicyPages({ activePolicy }: { activePolicy: string }) {
       icon: <RefreshCcw className="w-8 h-8 text-gold" />,
       content: (
         <div className="space-y-6 text-text-dim leading-relaxed">
-          <p>At RamaTenali, we strive to ensure our premium translation services meet the highest standards. However, if you are not satisfied with your experience, our return policy is as follows:</p>
+          <p>At RamaTenali, we strive to ensure our translation services meet the highest standards. However, if you are not satisfied with your experience, our return policy is as follows:</p>
           <section className="space-y-3">
             <h3 className="text-white font-bold text-lg">1. Digital Services</h3>
             <p>As our primary offerings are digital translation and communication services, "returns" in the traditional sense do not apply. Instead, we offer service credits for any technical failures or significant inaccuracies.</p>
@@ -57,8 +57,8 @@ export function PolicyPages({ activePolicy }: { activePolicy: string }) {
             <p>We collect minimal data required to provide our services, including your name, email (stored securely), and the text/audio you submit for translation.</p>
           </section>
           <section className="space-y-3">
-            <h3 className="text-white font-bold text-lg">2. Neural Processing</h3>
-            <p>Translations are processed using advanced neural models. We do not use your personal conversations to train public linguistic models without your explicit consent.</p>
+            <h3 className="text-white font-bold text-lg">2. Translation Technology</h3>
+            <p>Translations are processed using advanced technology. We do not use your personal conversations to train public models without your explicit consent.</p>
           </section>
           <section className="space-y-3">
             <h3 className="text-white font-bold text-lg">3. Security</h3>
@@ -95,7 +95,7 @@ export function PolicyPages({ activePolicy }: { activePolicy: string }) {
         <div className="space-y-8 text-text-dim leading-relaxed">
           <section className="space-y-4">
             <h3 className="text-white font-bold text-xl font-serif">Our Mission</h3>
-            <p>RamaTenali was founded with a simple goal: to break down language barriers across the globe using the power of advanced neural technology. We believe that communication is a fundamental human right, and technology should make it effortless.</p>
+            <p>RamaTenali was founded with a simple goal: to break down language barriers across the globe using cutting-edge technology. We believe that communication is a fundamental human right, and technology should make it effortless.</p>
           </section>
           
           <section className="space-y-6">
@@ -117,7 +117,7 @@ export function PolicyPages({ activePolicy }: { activePolicy: string }) {
                 </div>
                 <div>
                   <p className="text-[10px] font-bold text-gold uppercase tracking-wider">Phone</p>
-                  <p className="text-white font-medium">+1 (555) AI-RAMA-10</p>
+                  <p className="text-white font-medium">+1 (555) RAMA-10</p>
                 </div>
               </div>
               
